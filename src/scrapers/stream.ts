@@ -44,7 +44,7 @@ function unpack(packed: string): string {
 /**
  * Extract stream URL from iframe embed
  */
-export async function extractStreamUrl(iframeUrl: string, headers?: Record<string, string>): Promise<string | null> {
+export async function extractStreamUrl(iframeUrl: string, headers: Record<string, string> = { 'Referer': 'https://watchanimeworld.in/' }): Promise<string | null> {
     try {
         // Handle player1.php (WatchAnimeWorld API)
         if (iframeUrl.includes('player1.php') && iframeUrl.includes('data=')) {
