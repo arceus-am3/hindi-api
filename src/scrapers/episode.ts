@@ -43,15 +43,18 @@ export async function scrapeEpisode(id: string): Promise<EpisodeDetails> {
     const sources: VideoSource[] = [];
     const servers: Server[] = [];
 
-    // Look for iframe embeds
+    // Look for iframe embeds (check data-src first, then src)
     $('iframe').each((_, el) => {
-        const src = $(el).attr('src') || $(el).attr('data-src') || '';
-        if (src) {
-            const fullUrl = normalizeUrl(src);
+        const dataSrc = $(el).attr('data-src');
+        const src = $(el).attr('src');
+        const iframeSrc = dataSrc || src;
+
+        if (iframeSrc) {
+            const fullUrl = normalizeUrl(iframeSrc);
             sources.push({
                 url: fullUrl,
                 quality: 'auto',
-                type: getVideoType(fullUrl),
+                type: 'iframe',
                 server: 'iframe',
             });
         }
@@ -71,14 +74,17 @@ export async function scrapeEpisode(id: string): Promise<EpisodeDetails> {
             });
         }
 
-        // Check for iframes inside
+        // Check for iframes inside (with data-src priority)
         $el.find('iframe').each((_, iframe) => {
-            const src = $(iframe).attr('src') || $(iframe).attr('data-src') || '';
-            if (src) {
+            const dataSrc = $(iframe).attr('data-src');
+            const src = $(iframe).attr('src');
+            const iframeSrc = dataSrc || src;
+
+            if (iframeSrc) {
                 sources.push({
-                    url: normalizeUrl(src),
+                    url: normalizeUrl(iframeSrc),
                     quality: 'auto',
-                    type: getVideoType(src),
+                    type: 'iframe',
                 });
             }
         });

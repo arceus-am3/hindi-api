@@ -4,19 +4,19 @@ A comprehensive RESTful API for scraping anime content from [watchanimeworld.in]
 
 ## Features
 
-- 🏠 **Home Page Data** - Latest series, movies, trending, and popular content
-- 🔍 **Search Engine** - Full-text search with pagination and autocomplete suggestions
-- 📺 **Anime Details** - Comprehensive information with seasons, episodes, and related content
-- 🎬 **Episode Streaming** - Extract video sources and streaming links from multiple servers
-- 📂 **Category Browsing** - Filter by genre, language (Hindi, Tamil, Telugu, English), type
-- 🎥 **Stream Proxy** - CORS bypass and optimized embed player with HLS.js support
-- ⚡ **High Performance** - In-memory caching with TTL
-- 🔄 **Cloudflare Bypass** - Cookie jar support and user-agent rotation
-- 📖 **Swagger UI** - Interactive API documentation at root endpoint
+- **Home Page Data** - Latest series, movies, trending, and popular content
+- **Search Engine** - Full-text search with pagination and autocomplete suggestions
+- **Anime Details** - Comprehensive information with seasons, episodes, and related content
+- **Episode Streaming** - Extract video sources and streaming links from multiple servers
+- **Category Browsing** - Filter by genre, language (Hindi, Tamil, Telugu, English), type
+- **Stream Proxy** - CORS bypass and optimized embed player with HLS.js support
+- **High Performance** - In-memory caching with TTL
+- **Cloudflare Bypass** - Cookie jar support and user-agent rotation
+- **Swagger UI** - Interactive API documentation at root endpoint
 
 ## Live Deployment
 
-🌐 **Production URL**: https://watchanimeworld-api.ryanwtf.workers.dev
+**Production URL**: <https://watchanimeworld-api.ryanwtf.workers.dev>
 
 The API is deployed on Cloudflare Workers for global edge performance.
 
@@ -47,11 +47,13 @@ bun run build
 ### Base URL
 
 **Production:**
+
 ```
 https://watchanimeworld-api.ryanwtf.workers.dev
 ```
 
 **Local Development:**
+
 ```
 http://localhost:3000
 ```
@@ -72,6 +74,7 @@ GET /api/home
 Get homepage data with latest series, movies, trending, and popular content.
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -94,10 +97,12 @@ GET /api/search?keyword={query}&page={page}
 Search for anime by keyword.
 
 **Parameters:**
+
 - `keyword` (required) - Search query
 - `page` (optional) - Page number (default: 1)
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -130,6 +135,7 @@ GET /api/movies/:id
 Get detailed information about a specific anime/series/movie.
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -155,6 +161,7 @@ GET /api/episode/:id
 Get streaming links for an episode.
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -219,6 +226,7 @@ GET /api/category/language/:lang?page={page}
 Get anime by language.
 
 **Supported Languages:**
+
 - `hindi`
 - `tamil`
 - `telugu`
@@ -235,6 +243,7 @@ GET /api/stream/:episodeId
 Get stream URL and metadata for an episode.
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -268,38 +277,6 @@ Edit `src/config.ts` to customize:
 - Server port and host
 - Request timeout and retries
 - User agents for rotation
-
-## Project Structure
-
-```
-/hindi-api
-├── src/
-│   ├── config.ts           # Configuration
-│   ├── index.ts            # Main application
-│   ├── types/
-│   │   └── index.ts        # TypeScript types
-│   ├── utils/
-│   │   ├── http.ts         # HTTP client with cookie jar
-│   │   ├── cache.ts        # In-memory cache
-│   │   └── parser.ts       # HTML parsing utilities
-│   ├── scrapers/
-│   │   ├── home.ts         # Home page scraper
-│   │   ├── search.ts       # Search scraper
-│   │   ├── anime.ts        # Anime/series scraper
-│   │   ├── episode.ts      # Episode scraper
-│   │   ├── category.ts     # Category scraper
-│   │   └── stream.ts       # Stream extraction
-│   └── routes/
-│       ├── home.ts         # Home routes
-│       ├── search.ts       # Search routes
-│       ├── anime.ts        # Anime routes
-│       ├── episode.ts      # Episode routes
-│       ├── category.ts     # Category routes
-│       └── stream.ts       # Stream routes
-├── package.json
-├── tsconfig.json
-└── README.md
-```
 
 ## Development
 

@@ -18,7 +18,7 @@ function unpack(packed: string): string {
         const k = kStr.split('|');
 
         // Basic unpacking logic
-        const e = (c: number) => {
+        const e = (c: number): string => {
             return (c < a ? '' : e(Math.floor(c / a))) + ((c = c % a) > 35 ? String.fromCharCode(c + 29) : c.toString(36));
         };
 
@@ -148,6 +148,9 @@ export async function extractStreamUrl(iframeUrl: string, headers: Record<string
 /**
  * Get stream data for an episode
  */
+/**
+ * Get stream data for an episode
+ */
 export async function getStreamData(episodeId: string): Promise<StreamData> {
     const cacheKey = generateCacheKey('stream', episodeId);
 
@@ -160,50 +163,99 @@ export async function getStreamData(episodeId: string): Promise<StreamData> {
     // Import episode scraper
     const { scrapeEpisode } = await import('./episode');
 
-    // Get episode details
+    // Get episode details to find servers
+    // episodeId might benefit from being the 'post' ID for AJAX calls
     const episode = await scrapeEpisode(episodeId);
 
-    if (!episode.sources || episode.sources.length === 0) {
-        return {
-            success: false,
-            streamUrl: '',
-            type: 'none',
-        };
-    }
+    // If we have servers, we should try to fetch the player via AJAX for each
+    if (episode.servers && episode.servers.length > 0) {
+        for (const server of episode.servers) {
+            try {
+                // Prepare AJAX params
+                const params = new URLSearchParams();
+                params.append('action', 'doo_player_ajax');
+                params.append('post', episodeId);
+                params.append('nume', server.id); // server.id corresponds to 'nume' in doo_player_ajax
+                params.append('type', 'tv'); // or 'movie', but usually 'tv' for episodes. Might need to detect.
 
-    // Try to extract stream URL from the first iframe source
-    const iframeSource = episode.sources.find(s => s.type === 'iframe');
+                const response = await fetch(`${config.baseUrl}/wp-admin/admin-ajax.php`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: params
+                });
 
-    if (iframeSource) {
-        const streamUrl = await extractStreamUrl(iframeSource.url);
+                const data = await response.json(); // Usually returns JSON with {embed_url: "...", type: "iframe", ...}
 
-        if (streamUrl) {
-            const streamData: StreamData = {
-                success: true,
-                streamUrl,
-                type: getVideoType(streamUrl),
-            };
+                let playerUrl = '';
+                if (data.embed_url) {
+                    playerUrl = data.embed_url;
+                } else if (data.content) {
+                    // Sometimes content is HTML with iframe
+                    const $ = loadHtml(data.content);
+                    playerUrl = $('iframe').attr('src') || '';
+                }
 
-            // Cache the result
-            cache.set(cacheKey, streamData, config.cache.ttl.episode);
+                if (playerUrl) {
+                    // Now extract the actual stream from this player URL
+                    const streamUrl = await extractStreamUrl(normalizeUrl(playerUrl));
+                    if (streamUrl) {
+                        const streamData: StreamData = {
+                            success: true,
+                            streamUrl,
+                            type: getVideoType(streamUrl),
+                            title: episode.title,
+                            poster: episode.thumbnail
+                        };
+                        cache.set(cacheKey, streamData, config.cache.ttl.episode);
+                        return streamData;
+                    }
+                }
 
-            return streamData;
+            } catch (e) {
+                console.error(`Error fetching player for server ${server.id}:`, e);
+            }
         }
     }
 
-    // If no iframe, try direct sources
-    const directSource = episode.sources.find(s => s.type === 'hls' || s.type === 'mp4');
+    // Fallback: If no servers or AJAX fails, try the static sources from scrapeEpisode
+    if (episode.sources && episode.sources.length > 0) {
+        // Try to extract stream URL from iframe sources
+        const iframeSources = episode.sources.filter(s => s.type === 'iframe');
 
-    if (directSource) {
-        const streamData: StreamData = {
-            success: true,
-            streamUrl: directSource.url,
-            type: directSource.type,
-        };
+        for (const source of iframeSources) {
+            const streamUrl = await extractStreamUrl(source.url);
 
-        cache.set(cacheKey, streamData, config.cache.ttl.episode);
+            if (streamUrl) {
+                const streamData: StreamData = {
+                    success: true,
+                    streamUrl,
+                    type: getVideoType(streamUrl),
+                    title: episode.title,
+                    poster: episode.thumbnail
+                };
+                cache.set(cacheKey, streamData, config.cache.ttl.episode);
+                return streamData;
+            }
+        }
 
-        return streamData;
+        // If no iframe, try direct sources
+        const directSource = episode.sources.find(s => s.type === 'hls' || s.type === 'mp4');
+
+        if (directSource) {
+            const streamData: StreamData = {
+                success: true,
+                streamUrl: directSource.url,
+                type: directSource.type,
+                title: episode.title,
+                poster: episode.thumbnail
+            };
+            cache.set(cacheKey, streamData, config.cache.ttl.episode);
+            return streamData;
+        }
     }
 
     return {

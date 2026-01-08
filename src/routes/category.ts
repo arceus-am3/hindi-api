@@ -11,7 +11,10 @@ category.get('/anime', async (c) => {
     try {
         const page = parseInt(c.req.query('page') || '1');
         const data = await scrapeCategory('anime', page);
-        return c.json(data);
+        return c.json({
+            success: true,
+            data
+        });
     } catch (error) {
         console.error('Error in /api/category/anime:', error);
         return c.json({
@@ -30,7 +33,10 @@ category.get('/cartoon', async (c) => {
     try {
         const page = parseInt(c.req.query('page') || '1');
         const data = await scrapeCategory('cartoon', page);
-        return c.json(data);
+        return c.json({
+            success: true,
+            data
+        });
     } catch (error) {
         console.error('Error in /api/category/cartoon:', error);
         return c.json({
@@ -49,7 +55,10 @@ category.get('/movies', async (c) => {
     try {
         const page = parseInt(c.req.query('page') || '1');
         const data = await scrapeCategory('movies', page);
-        return c.json(data);
+        return c.json({
+            success: true,
+            data
+        });
     } catch (error) {
         console.error('Error in /api/category/movies:', error);
         return c.json({
@@ -68,7 +77,10 @@ category.get('/series', async (c) => {
     try {
         const page = parseInt(c.req.query('page') || '1');
         const data = await scrapeCategory('series', page);
-        return c.json(data);
+        return c.json({
+            success: true,
+            data
+        });
     } catch (error) {
         console.error('Error in /api/category/series:', error);
         return c.json({
@@ -88,7 +100,10 @@ category.get('/language/:lang', async (c) => {
         const lang = c.req.param('lang');
         const page = parseInt(c.req.query('page') || '1');
         const data = await scrapeCategoryByLanguage(lang, page);
-        return c.json(data);
+        return c.json({
+            success: true,
+            data
+        });
     } catch (error) {
         console.error('Error in /api/category/language/:lang:', error);
         return c.json({
@@ -108,7 +123,10 @@ category.get('/:name', async (c) => {
         const name = c.req.param('name');
         const page = parseInt(c.req.query('page') || '1');
         const data = await scrapeCategory(name, page);
-        return c.json(data);
+        return c.json({
+            success: true,
+            data
+        });
     } catch (error) {
         console.error('Error in /api/category/:name:', error);
         return c.json({

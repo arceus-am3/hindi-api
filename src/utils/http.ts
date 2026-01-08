@@ -1,94 +1,85 @@
-import axios, { AxiosInstance } from 'axios';
-import { wrapper } from 'axios-cookiejar-support';
-import { CookieJar } from 'tough-cookie';
 import { config } from '../config';
 
-// Create cookie jar for session management
-const jar = new CookieJar();
-
-// Create axios instance with cookie jar support
-const httpClient: AxiosInstance = wrapper(axios.create({
-    timeout: config.request.timeout,
-    jar,
-    withCredentials: true,
-    headers: {
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Cache-Control': 'max-age=0',
-    }
-}));
-
-// Add request interceptor for user agent rotation
-httpClient.interceptors.request.use((config) => {
-    const randomUserAgent = getRandomUserAgent();
-    config.headers['User-Agent'] = randomUserAgent;
-    return config;
-});
-
-// Add response interceptor for retry logic
-httpClient.interceptors.response.use(
-    (response) => response,
-    async (error) => {
-        const { config: requestConfig } = error;
-
-        if (!requestConfig || !requestConfig.retry) {
-            requestConfig.retry = 0;
-        }
-
-        // Retry on network errors or 5xx errors
-        if (
-            requestConfig.retry < config.request.maxRetries &&
-            (!error.response || error.response.status >= 500)
-        ) {
-            requestConfig.retry += 1;
-
-            // Wait before retrying
-            await new Promise(resolve =>
-                setTimeout(resolve, config.request.retryDelay * requestConfig.retry)
-            );
-
-            return httpClient(requestConfig);
-        }
-
-        return Promise.reject(error);
-    }
-);
+const userAgents = config.userAgents;
 
 function getRandomUserAgent(): string {
-    const userAgents = config.userAgents;
     return userAgents[Math.floor(Math.random() * userAgents.length)];
 }
 
-export { httpClient };
+const defaultHeaders = {
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1',
+    'Cache-Control': 'max-age=0',
+    'Referer': config.baseUrl + '/',
+};
 
-/**
- * Fetch HTML content from a URL
- */
-/**
- * Fetch HTML content from a URL
- */
-export async function fetchHtml(url: string, headers?: Record<string, string>): Promise<string> {
+async function fetchWithRetry(url: string, options: RequestInit = {}, retries = config.request.maxRetries): Promise<Response> {
     try {
-        const response = await httpClient.get(url, { headers });
-        return response.data;
-    } catch (error) {
-        console.error(`Error fetching ${url}:`, error);
-        throw new Error(`Failed to fetch ${url}`);
+        const headers = {
+            ...defaultHeaders,
+            'User-Agent': getRandomUserAgent(),
+            ...(options.headers || {})
+        };
+        const res = await fetch(url, { ...options, headers });
+        if (!res.ok && res.status >= 500 && retries > 0) {
+            console.warn(`Fetch failed with ${res.status}, retrying ${url} (${retries} left)...`);
+            await new Promise(r => setTimeout(r, config.request.retryDelay));
+            return fetchWithRetry(url, options, retries - 1);
+        }
+        return res;
+    } catch (e: any) {
+        if (retries > 0) {
+            console.warn(`Fetch error: ${e.message}, retrying ${url} (${retries} left)...`);
+            await new Promise(r => setTimeout(r, config.request.retryDelay));
+            return fetchWithRetry(url, options, retries - 1);
+        }
+        throw e;
     }
 }
 
-/**
- * Build full URL from relative path
- */
-export function buildUrl(path: string): string {
-    if (path.startsWith('http')) {
-        return path;
+export const httpClient = {
+    get: async (url: string, conf: any = {}) => {
+        const res = await fetchWithRetry(url, { headers: conf.headers });
+        if (!res.ok) {
+            throw new Error(`Request failed with status ${res.status}`);
+        }
+        if (conf.responseType === 'stream') {
+            return {
+                // Bun's fetch body is a ReadableStream
+                data: res.body,
+                headers: Object.fromEntries((res.headers as any).entries()),
+                status: res.status
+            };
+        }
+
+        // Handle JSON automatically if content-type is json
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+            const json = await res.json();
+            return { data: json, headers: Object.fromEntries((res.headers as any).entries()), status: res.status };
+        }
+
+        const text = await res.text();
+        return { data: text, headers: Object.fromEntries((res.headers as any).entries()), status: res.status };
     }
+};
+
+export async function fetchHtml(url: string, headers: Record<string, string> = {}): Promise<string> {
+    try {
+        const res = await fetchWithRetry(url, { headers });
+        if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status} ${res.statusText}`);
+        return await res.text();
+    } catch (error) {
+        console.error(`Error fetching ${url}:`);
+        console.error(error);
+        throw error;
+    }
+}
+
+export function buildUrl(path: string): string {
+    if (path.startsWith('http')) return path;
     return `${config.baseUrl}${path.startsWith('/') ? path : '/' + path}`;
 }

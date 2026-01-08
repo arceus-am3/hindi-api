@@ -58,45 +58,117 @@ export async function scrapeAnimeDetails(id: string): Promise<AnimeDetails> {
     // Extract status
     const status = cleanText($('.status, .data .status').first().text());
 
-    // Extract episodes/seasons
+    // Extract Seasons and Episodes
     const seasons: Season[] = [];
-    const episodeMap = new Map<number, Episode[]>();
+    const postId = $('input[name="comment_post_ID"]').val();
+    const seasonLinks = $('.choose-season .sub-menu li a');
 
-    // Look for episode lists
-    $('.episodes-list li, .episodios li, .se-c .se-a ul li, .episode-item').each((_, el) => {
-        const $el = $(el);
-        const link = $el.find('a').first();
-        const episodeUrl = normalizeUrl(link.attr('href') || '');
-        const episodeTitle = cleanText(link.text() || link.attr('title') || '');
-        const thumbnail = normalizeUrl($el.find('img').first().attr('src') || '');
+    if (postId && seasonLinks.length > 0) {
+        // Multi-season anime with AJAX loading
+        for (let i = 0; i < seasonLinks.length; i++) {
+            const el = seasonLinks[i];
+            const sNumStr = $(el).attr('data-season') || '0';
+            const seasonNum = parseInt(sNumStr);
 
-        if (episodeUrl && episodeTitle) {
-            const episodeId = extractIdFromUrl(episodeUrl);
-            const { season, episode } = parseEpisodeNumber(episodeTitle);
+            if (seasonNum > 0) {
+                try {
+                    const params = new URLSearchParams();
+                    params.append('action', 'action_select_season');
+                    params.append('season', seasonNum.toString());
+                    params.append('post', postId.toString());
 
-            const episodeInfo: Episode = {
-                id: episodeId,
-                episodeNumber: episode,
-                seasonNumber: season,
-                title: episodeTitle,
-                thumbnail,
-                url: episodeUrl,
-            };
+                    // We need to fetch the episodes for this season
+                    const response = await fetch(`${config.baseUrl}/wp-admin/admin-ajax.php`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        body: params
+                    });
 
-            if (!episodeMap.has(season)) {
-                episodeMap.set(season, []);
+                    const htmlFragment = await response.text();
+                    const $season = loadHtml(htmlFragment);
+                    const episodes: Episode[] = [];
+
+                    $season('article.post.episodes').each((_, epEl) => {
+                        const $ep = $season(epEl);
+                        const link = $ep.find('a').first();
+                        const epUrl = normalizeUrl(link.attr('href') || '');
+                        const epTitle = cleanText($ep.find('.entry-title').text());
+                        const epPoster = $ep.find('img').first().attr('src') || $ep.find('img').first().attr('data-src') || '';
+
+                        const numText = $ep.find('.num-epi').text();
+                        // parseEpisodeNumber returns { season, episode }
+                        const { episode } = parseEpisodeNumber(numText || epTitle);
+                        // If numText is empty, it tries title. If both fail, defaults to 1.
+                        // We use the episode number from parser, but season from loop.
+
+                        // Fallback using simple index if parser returns 1 and it looks suspicious? 
+                        // But usually parser is fine.
+
+                        if (epUrl) {
+                            episodes.push({
+                                id: extractIdFromUrl(epUrl),
+                                title: epTitle,
+                                episodeNumber: episode,
+                                seasonNumber: seasonNum,
+                                url: epUrl,
+                                thumbnail: normalizeUrl(epPoster)
+                            });
+                        }
+                    });
+
+                    if (episodes.length > 0) {
+                        seasons.push({
+                            seasonNumber: seasonNum,
+                            episodes: episodes
+                        });
+                    }
+
+                } catch (e) {
+                    console.error(`Failed to fetch season ${seasonNum} for anime ${id}:`, e);
+                }
             }
-            episodeMap.get(season)!.push(episodeInfo);
         }
-    });
+    } else {
+        // Single season or static list
+        const episodes: Episode[] = [];
+        const episodeList = $('#episode_by_temp li, .episodes-list li, #seasons .se-c .se-a li');
 
-    // Convert episode map to seasons array
-    episodeMap.forEach((episodes, seasonNumber) => {
-        seasons.push({
-            seasonNumber,
-            episodes: episodes.sort((a, b) => a.episodeNumber - b.episodeNumber),
+        episodeList.each((_, el) => {
+            const $el = $(el);
+            let link = $el.find('a.lnk-blk').first();
+            if (link.length === 0) link = $el.find('a').first();
+
+            const epUrl = normalizeUrl(link.attr('href') || '');
+            const epPoster = $el.find('img').first().attr('src') || $el.find('img').first().attr('data-src') || '';
+            let epTitle = cleanText($el.find('.entry-title').text() || link.attr('title') || '');
+
+            const numText = $el.find('.num-epi').text();
+            // Try numText first, then title
+            const { episode, season } = parseEpisodeNumber(numText || epTitle);
+
+            if (epUrl) {
+                episodes.push({
+                    id: extractIdFromUrl(epUrl),
+                    title: epTitle,
+                    episodeNumber: episode,
+                    seasonNumber: season,
+                    url: epUrl,
+                    thumbnail: normalizeUrl(epPoster)
+                });
+            }
         });
-    });
+
+        if (episodes.length > 0) {
+            seasons.push({
+                seasonNumber: 1,
+                episodes: episodes
+            });
+        }
+    }
 
     // Sort seasons
     seasons.sort((a, b) => a.seasonNumber - b.seasonNumber);

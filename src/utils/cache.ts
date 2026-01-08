@@ -77,8 +77,10 @@ class Cache {
 // Export singleton instance
 export const cache = new Cache();
 
-// Note: Automatic cleanup is disabled for Cloudflare Workers compatibility
-// Call cache.cleanExpired() manually if needed in request handlers
+// Start automatic cleanup
+setInterval(() => {
+    cache.cleanExpired();
+}, 60 * 1000);
 
 /**
  * Generate cache key from parts

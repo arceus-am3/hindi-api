@@ -7,11 +7,10 @@
   "scripts": {
     "dev": "bun run --hot src/index.ts",
     "start": "bun run src/index.ts",
-    "build": "bun build src/index.ts --outdir ./dist --target bun",
+    "build": "tsc",
+    "start:dist": "node dist/index.js",
     "test": "bun test",
-    "test:integration": "bun test --integration",
-    "deploy": "wrangler deploy",
-    "cf-typegen": "wrangler types"
+    "test:integration": "bun test --integration"
   },
   "keywords": [
     "anime",
@@ -24,6 +23,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@hono/node-server": "^1.19.7",
     "@hono/swagger-ui": "^0.5.2",
     "axios": "^1.6.0",
     "axios-cookiejar-support": "^5.0.0",
@@ -33,6 +33,8 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/node": "^25.0.3",
+    "typescript": "^5.9.3",
     "wrangler": "^4.53.0"
   }
 }

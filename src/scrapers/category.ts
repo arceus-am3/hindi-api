@@ -99,18 +99,16 @@ export async function scrapeCategoryByLanguage(language: string, page: number = 
         return cached;
     }
 
-    // Get all anime and filter by language
-    // The website doesn't have language-specific URLs, so we filter from the main category
-    const allContent = await scrapeCategory('anime', page);
-    const filtered = allContent.results.filter(item =>
-        item.language?.some(lang => lang.toLowerCase() === language.toLowerCase())
-    );
+    // Use the specific language category URL
+    // e.g. https://watchanimeworld.in/category/language/hindi/
+    const categoryPath = `language/${language.toLowerCase()}`;
+    const result = await scrapeCategory(categoryPath, page);
 
     const categoryData: CategoryData = {
         success: true,
         category: `language-${language}`,
-        results: filtered,
-        pagination: allContent.pagination,
+        results: result.results,
+        pagination: result.pagination,
     };
 
     // Cache the result

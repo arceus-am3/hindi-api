@@ -12,6 +12,9 @@ import anime from './routes/anime';
 import episode from './routes/episode';
 import category from './routes/category';
 import stream from './routes/stream';
+import az from './routes/az';
+import genre from './routes/genre';
+import crawl from './routes/crawl';
 
 // Create Hono app
 const app = new Hono();
@@ -364,7 +367,7 @@ const openApiSpec = {
                 },
             },
         },
-        '/api/embed/{episodeId}': {
+        '/api/stream/embed/{episodeId}': {
             get: {
                 summary: 'Get embed player',
                 description: 'Get optimized embed player HTML with HLS.js support',
@@ -384,6 +387,139 @@ const openApiSpec = {
                         content: {
                             'text/html': {
                                 schema: { type: 'string' },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+        '/api/az/{letter}': {
+            get: {
+                summary: 'Get A-Z content',
+                description: 'Get series starting with a specific letter',
+                tags: ['AZ'],
+                parameters: [
+                    {
+                        name: 'letter',
+                        in: 'path',
+                        required: true,
+                        schema: { type: 'string' },
+                        description: 'Letter (A-Z, 0-9)',
+                    },
+                    {
+                        name: 'page',
+                        in: 'query',
+                        required: false,
+                        schema: { type: 'integer', default: 1 },
+                        description: 'Page number',
+                    },
+                ],
+                responses: {
+                    '200': {
+                        description: 'Successful response',
+                        content: {
+                            'application/json': {
+                                schema: { $ref: '#/components/schemas/CategoryData' },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+        '/api/genre/{genre}': {
+            get: {
+                summary: 'Get content by genre',
+                tags: ['Genre'],
+                parameters: [
+                    {
+                        name: 'genre',
+                        in: 'path',
+                        required: true,
+                        schema: { type: 'string' },
+                        description: 'Genre name',
+                    },
+                    {
+                        name: 'page',
+                        in: 'query',
+                        required: false,
+                        schema: { type: 'integer', default: 1 },
+                        description: 'Page number',
+                    },
+                ],
+                responses: {
+                    '200': {
+                        description: 'Successful response',
+                        content: {
+                            'application/json': {
+                                schema: { $ref: '#/components/schemas/CategoryData' },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+        '/api/crawl/start': {
+            post: {
+                summary: 'Start crawler',
+                tags: ['Crawler'],
+                responses: {
+                    '200': {
+                        description: 'Crawler started',
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'object',
+                                    properties: {
+                                        success: { type: 'boolean' },
+                                        message: { type: 'string' },
+                                        status: { type: 'object' },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+        '/api/crawl/stop': {
+            post: {
+                summary: 'Stop crawler',
+                tags: ['Crawler'],
+                responses: {
+                    '200': {
+                        description: 'Crawler stopped',
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'object',
+                                    properties: {
+                                        success: { type: 'boolean' },
+                                        message: { type: 'string' },
+                                        status: { type: 'object' },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+        '/api/crawl/status': {
+            get: {
+                summary: 'Get crawler status',
+                tags: ['Crawler'],
+                responses: {
+                    '200': {
+                        description: 'Crawler status',
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'object',
+                                    properties: {
+                                        success: { type: 'boolean' },
+                                        status: { type: 'object' },
+                                    },
+                                },
                             },
                         },
                     },
@@ -441,7 +577,6 @@ const openApiSpec = {
             CategoryData: {
                 type: 'object',
                 properties: {
-                    success: { type: 'boolean' },
                     category: { type: 'string' },
                     results: { type: 'array', items: { $ref: '#/components/schemas/AnimeInfo' } },
                     pagination: { $ref: '#/components/schemas/Pagination' },
@@ -498,7 +633,15 @@ app.get(
 
 // OpenAPI JSON endpoint
 app.get('/openapi.json', (c) => {
-    return c.json(openApiSpec);
+    const spec = JSON.parse(JSON.stringify(openApiSpec));
+    const url = new URL(c.req.url);
+    spec.servers = [
+        {
+            url: `${url.protocol}//${url.host}`,
+            description: 'Current server',
+        }
+    ];
+    return c.json(spec);
 });
 
 // API routes
@@ -510,7 +653,9 @@ app.route('/api/movies', anime); // Alias
 app.route('/api/episode', episode);
 app.route('/api/category', category);
 app.route('/api/stream', stream);
-app.route('/api/embed', stream);
+app.route('/api/az', az);
+app.route('/api/genre', genre);
+app.route('/api/crawl', crawl);
 
 // Health check
 app.get('/health', (c) => {
@@ -538,6 +683,10 @@ app.onError((err, c) => {
         message: err.message,
     }, 500);
 });
+
+
+
+// ... (keep existing code)
 
 // Start server
 const port = config.server.port;

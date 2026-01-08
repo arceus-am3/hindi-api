@@ -94,9 +94,9 @@ export interface CategoryData {
 export interface HomeData {
     latestSeries: AnimeInfo[];
     latestMovies: AnimeInfo[];
-    trending?: AnimeInfo[];
-    popular?: AnimeInfo[];
-    featured?: AnimeInfo[];
+    trending: AnimeInfo[];
+    popular: AnimeInfo[];
+    featured: AnimeInfo[];
 }
 
 export interface ApiResponse<T = any> {
@@ -111,4 +111,6 @@ export interface StreamData {
     streamUrl: string;
     type: string;
     headers?: Record<string, string>;
+    title?: string;
+    poster?: string;
 }
