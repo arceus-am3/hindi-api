@@ -1,16 +1,17 @@
 {
   "version": 2,
   "name": "hindi-api",
+  "bunVersion": "1.x",
   "rewrites": [
     {
       "source": "/(.*)",
-      "destination": "/api/index"
+      "destination": "/api/index.ts"
     }
   ],
   "functions": {
     "api/index.ts": {
       "maxDuration": 30,
-      "memory": 1024
+      "runtime": "bun"
     }
   },
   "headers": [
@@ -38,11 +39,5 @@
   ],
   "env": {
     "NODE_ENV": "production"
-  },
-  "crons": [
-    {
-      "path": "/api/crawl/start",
-      "schedule": "0 2 * * *"
-    }
-  ]
+  }
 }
