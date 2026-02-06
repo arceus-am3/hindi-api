@@ -218,7 +218,30 @@ export async function scrapeAnimeDetails(id: string): Promise<AnimeDetails> {
 
     return animeDetails;
 }
+export async function scrapeAnimeSeasons(id: string) {
+  const anime = await scrapeAnimeDetails(id);
 
+  if (!anime.seasons || anime.seasons.length === 0) {
+    return {
+      totalSeasons: 0,
+      seasons: []
+    };
+  }
+
+  return {
+    totalSeasons: anime.seasons.length,
+    seasons: anime.seasons.map(season => ({
+      seasonNumber: season.seasonNumber,
+      totalEpisodes: season.episodes.length,
+      episodes: season.episodes.map(ep => ({
+        id: ep.id,
+        episodeNumber: ep.episodeNumber,
+        url: ep.url,
+        thumbnail: ep.thumbnail
+      }))
+    }))
+  };
+}
 /**
  * Scrape movie details (similar to anime but for movies)
  */
