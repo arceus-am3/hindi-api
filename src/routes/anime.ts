@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { scrapeAnimeDetails, scrapeMovieDetails } from '../scrapers/anime';
+import { scrapeAnimeSeasons } from '../scrapers/anime';
 const anime = new Hono();
 
 /**
