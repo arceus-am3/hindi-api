@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
 import { scrapeAnimeDetails, scrapeMovieDetails } from '../scrapers/anime';
-
 const anime = new Hono();
 
 /**
@@ -24,7 +23,28 @@ anime.get('/:id', async (c) => {
         }, 500);
     }
 });
+/**
+ * GET /api/anime/:id/seasons
+ * Get season + episode structure
+ */
+anime.get('/:id/seasons', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const data = await scrapeAnimeSeasons(id);
 
+    return c.json({
+      success: true,
+      data
+    });
+  } catch (error) {
+    console.error('Error in /api/anime/:id/seasons:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to fetch seasons',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    }, 500);
+  }
+});
 /**
  * GET /api/series/:id
  * Alias for anime details
