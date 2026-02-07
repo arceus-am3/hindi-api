@@ -59,74 +59,44 @@ export async function scrapeAnimeDetails(id: string): Promise<AnimeDetails> {
     const status = cleanText($('.status, .data .status').first().text());
 
     // Extract Seasons and Episodes
-    const seasons: Season[] = [];
-    const postId = $('input[name="comment_post_ID"]').val();
-    const seasonLinks = $('.choose-season .sub-menu li a');
+ // ===============================
+// SEASONS & EPISODES (FIXED)
+// watchanimeworld.net
+// ===============================
+const seasons: Season[] = [];
+const episodes: Episode[] = [];
 
-    if (postId && seasonLinks.length > 0) {
-        // Multi-season anime with AJAX loading
-        for (let i = 0; i < seasonLinks.length; i++) {
-            const el = seasonLinks[i];
-            const sNumStr = $(el).attr('data-season') || '0';
-            const seasonNum = parseInt(sNumStr);
+const episodeList = $('#episode_by_temp li');
 
-            if (seasonNum > 0) {
-                try {
-                    const params = new URLSearchParams();
-                    params.append('action', 'action_select_season');
-                    params.append('season', seasonNum.toString());
-                    params.append('post', postId.toString());
+episodeList.each((_, el) => {
+  const $el = $(el);
+  const link = $el.find('a').first();
 
-                    // We need to fetch the episodes for this season
-                    const response = await fetch(`${config.baseUrl}/wp-admin/admin-ajax.php`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                            'X-Requested-With': 'XMLHttpRequest'
-                        },
-                        body: params
-                    });
+  const epUrl = normalizeUrl(link.attr('href') || '');
+  const label = cleanText(link.text()); // ex: "1x12"
 
-                    const htmlFragment = await response.text();
-                    const $season = loadHtml(htmlFragment);
-                    const episodes: Episode[] = [];
+  const match = label.match(/(\d+)x(\d+)/i);
+  const episodeNumber = match ? parseInt(match[2]) : episodes.length + 1;
 
-                    $season('article.post.episodes').each((_, epEl) => {
-                        const $ep = $season(epEl);
-                        const link = $ep.find('a').first();
-                        const epUrl = normalizeUrl(link.attr('href') || '');
-                        const epTitle = cleanText($ep.find('.entry-title').text());
-                        const epPoster = $ep.find('img').first().attr('src') || $ep.find('img').first().attr('data-src') || '';
+  if (epUrl) {
+    episodes.push({
+      id: extractIdFromUrl(epUrl),
+      title: `Episode ${episodeNumber}`,
+      episodeNumber,
+      seasonNumber: 1,
+      url: epUrl,
+      thumbnail: ''
+    });
+  }
+});
 
-                        const numText = $ep.find('.num-epi').text();
-                        // parseEpisodeNumber returns { season, episode }
-                        const { episode } = parseEpisodeNumber(numText || epTitle);
-                        // If numText is empty, it tries title. If both fail, defaults to 1.
-                        // We use the episode number from parser, but season from loop.
-
-                        // Fallback using simple index if parser returns 1 and it looks suspicious? 
-                        // But usually parser is fine.
-
-                        if (epUrl) {
-                            episodes.push({
-                                id: extractIdFromUrl(epUrl),
-                                title: epTitle,
-                                episodeNumber: episode,
-                                seasonNumber: seasonNum,
-                                url: epUrl,
-                                thumbnail: normalizeUrl(epPoster)
-                            });
-                        }
-                    });
-
-                    if (episodes.length > 0) {
-                        seasons.push({
-                            seasonNumber: seasonNum,
-                            episodes: episodes
-                        });
-                    }
-
+if (episodes.length > 0) {
+  seasons.push({
+    seasonNumber: 1,
+    episodes
+  });
+}
+    
                 } catch (e) {
                     console.error(`Failed to fetch season ${seasonNum} for anime ${id}:`, e);
                 }
