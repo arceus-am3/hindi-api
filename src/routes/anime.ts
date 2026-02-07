@@ -37,13 +37,8 @@ anime.get('/:id/seasons', async (c) => {
       success: true,
       data
     });
-  } catch (error) {
-    console.error('Error in /api/anime/:id/seasons:', error);
-    return c.json({
-      success: false,
-      error: 'Failed to fetch seasons',
-      message: error instanceof Error ? error.message : 'Unknown error'
-    }, 500);
+  } catch (e) {
+    return c.json({ success: false }, 500);
   }
 });
 /**
