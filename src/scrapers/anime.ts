@@ -36,56 +36,50 @@ export async function scrapeAnimeDetails(id: string): Promise<AnimeDetails> {
   if (text.includes('telugu')) languages.push('Telugu');
   if (text.includes('english')) languages.push('English');
 
-  // ================= SEASONS & EPISODES =================
 // ================= SEASONS & EPISODES =================
-const seasonMap = new Map<number, Episode>();
+const seasonMap = new Map<number, Episode[]>();
 
-$('a[href*="/episode/"]').each((_, el) => {
-  const link = $(el);
-  const epUrl = normalizeUrl(link.attr('href') || '');
-  if (!epUrl) return;
+$('a[href*="/episode/"]')
+  .filter((_, el) => {
+    const t = cleanText($(el).text());
+    return /\d+\s*x\s*\d+/i.test(t);
+  })
+  .each((_, el) => {
+    const link = $(el);
+    const epUrl = normalizeUrl(link.attr('href') || '');
+    if (!epUrl) return;
 
-  const label = cleanText(link.text()); // "3x2" or "Episode 12"
+    const label = cleanText(link.text()); // "3x2"
+    const match = label.match(/(\d+)\s*x\s*(\d+)/i);
+    if (!match) return;
 
-  // Try 3x2 format
-  const match = label.match(/(\d+)\s*x\s*(\d+)/i);
+    const seasonNumber = Number(match[1]);
+    const episodeNumber = Number(match[2]);
 
-  let seasonNumber = 1;
-  let episodeNumber: number | null = null;
+    const ep: Episode = {
+      id: extractIdFromUrl(epUrl),
+      title: `Episode ${episodeNumber}`,
+      episodeNumber,
+      seasonNumber,
+      url: epUrl,
+      thumbnail: '',
+    };
 
-  if (match) {
-    seasonNumber = Number(match[1]);
-    episodeNumber = Number(match[2]);
-  } else {
-    // fallback: extract number from URL or text
-    const n = label.match(/(\d+)/);
-    if (n) episodeNumber = Number(n[1]);
-  }
+    if (!seasonMap.has(seasonNumber)) {
+      seasonMap.set(seasonNumber, []);
+    }
 
-  if (!episodeNumber) return;
-
-  const ep: Episode = {
-    id: extractIdFromUrl(epUrl),
-    title: `Episode ${episodeNumber}`,
-    episodeNumber,
-    seasonNumber,
-    url: epUrl,
-    thumbnail: ''
-  };
-
-  if (!seasonMap.has(seasonNumber)) {
-    seasonMap.set(seasonNumber, []);
-  }
-
-  seasonMap.get(seasonNumber)!.push(ep);
-});
+    seasonMap.get(seasonNumber)!.push(ep);
+  });
 
 // build seasons
 const seasons: Season[] = Array.from(seasonMap.entries())
   .sort((a, b) => a[0] - b[0])
   .map(([seasonNumber, episodes]) => ({
     seasonNumber,
-    episodes: episodes.sort((a, b) => a.episodeNumber - b.episodeNumber),
+    episodes: episodes.sort(
+      (a, b) => a.episodeNumber - b.episodeNumber
+    ),
   }));
 
 const totalEpisodes = seasons.reduce(
