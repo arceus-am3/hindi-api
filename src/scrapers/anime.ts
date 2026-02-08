@@ -40,13 +40,13 @@ export async function scrapeAnimeDetails(id: string): Promise<AnimeDetails> {
 // ================= SEASONS & EPISODES =================
 const seasonMap = new Map<number, Episode[]>();
 
-$('#episode_by_temp li').each((_, el) => {
-  const link = $(el).find('a').first();
-  const epUrl = normalizeUrl(link.attr('href') || '');
-  const label = cleanText(link.text()); // e.g. "3x10"
+$('#episode_by_temp li article a').each((_, el) => {
+  const epUrl = normalizeUrl($(el).attr('href') || '');
+  if (!epUrl) return;
 
-  const match = label.match(/(\d+)\s*x\s*(\d+)/i);
-  if (!match || !epUrl) return;
+  // extract "3x10" from URL
+  const match = epUrl.match(/(\d+)x(\d+)/i);
+  if (!match) return;
 
   const seasonNumber = Number(match[1]);
   const episodeNumber = Number(match[2]);
