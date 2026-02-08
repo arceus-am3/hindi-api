@@ -7,6 +7,25 @@ import type { AnimeDetails, Season, Episode, AnimeInfo } from '../types';
 /**
  * Scrape anime/series details
  */
+async function fetchSeasonHtml(postId: string, season: number) {
+  const res = await fetch(
+    `${config.baseUrl}/wp-admin/admin-ajax.php`,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        action: 'load_episodes',
+        post: postId,
+        season: String(season),
+      }),
+    }
+  );
+
+  return await res.text();
+}
+
 export async function scrapeAnimeDetails(id: string): Promise<AnimeDetails> {
   const cacheKey = generateCacheKey('anime', id);
   const cached = cache.get<AnimeDetails>(cacheKey);
@@ -16,19 +35,29 @@ export async function scrapeAnimeDetails(id: string): Promise<AnimeDetails> {
   const html = await fetchHtml(url);
   const $ = loadHtml(html);
 
-  // ================= BASIC INFO =================
+  // ===== postId =====
+  const postId =
+    $('body')
+      .attr('class')
+      ?.match(/postid-(\d+)/)?.[1];
+
+  if (!postId) {
+    throw new Error('postId not found');
+  }
+
+  // ===== BASIC INFO =====
   const title = cleanText($('h1').first().text());
   const poster = normalizeUrl($('article img').first().attr('src') || '');
   const description = cleanText($('.content').first().text());
 
-  // ================= GENRES =================
+  // ===== GENRES =====
   const genres: string[] = [];
   $('a[rel="tag"]').each((_, el) => {
     const g = cleanText($(el).text());
     if (g) genres.push(g);
   });
 
-  // ================= LANGUAGES =================
+  // ===== LANGUAGES =====
   const languages: string[] = [];
   const text = $.text().toLowerCase();
   if (text.includes('hindi')) languages.push('Hindi');
@@ -36,52 +65,55 @@ export async function scrapeAnimeDetails(id: string): Promise<AnimeDetails> {
   if (text.includes('telugu')) languages.push('Telugu');
   if (text.includes('english')) languages.push('English');
 
-  // ================= SEASONS & EPISODES =================
-// ================= SEASONS & EPISODES =================
-const seasonMap = new Map<number, Episode[]>();
+  // ===== SEASON LIST (1,2,3...) =====
+  const seasonNumbers: number[] = [];
+  $('.aa-cnt.sub-menu a[data-season]').each((_, el) => {
+    const s = Number($(el).attr('data-season'));
+    if (!isNaN(s)) seasonNumbers.push(s);
+  });
 
-$('#episode_by_temp li article a').each((_, el) => {
-  const epUrl = normalizeUrl($(el).attr('href') || '');
-  if (!epUrl) return;
+  // ===== FETCH ALL SEASONS =====
+  const seasons: Season[] = [];
 
-  // extract "3x10" from URL
-  const match = epUrl.match(/(\d+)x(\d+)/i);
-  if (!match) return;
+  for (const seasonNumber of seasonNumbers) {
+    const seasonHtml = await fetchSeasonHtml(postId, seasonNumber);
+    const $$ = loadHtml(seasonHtml);
 
-  const seasonNumber = Number(match[1]);
-  const episodeNumber = Number(match[2]);
+    const episodes: Episode[] = [];
 
-  const episode: Episode = {
-    id: extractIdFromUrl(epUrl),
-    title: `Episode ${episodeNumber}`,
-    episodeNumber,
-    seasonNumber,
-    url: epUrl,
-    thumbnail: ''
-  };
+    $$('#episode_by_temp a.lnk-blk').each((_, a) => {
+      const epUrl = normalizeUrl($$(a).attr('href') || '');
+      if (!epUrl) return;
 
-  if (!seasonMap.has(seasonNumber)) {
-    seasonMap.set(seasonNumber, []);
+      const m = epUrl.match(/(\d+)x(\d+)/);
+      if (!m) return;
+
+      episodes.push({
+        id: extractIdFromUrl(epUrl),
+        title: `Episode ${m[2]}`,
+        episodeNumber: Number(m[2]),
+        seasonNumber,
+        url: epUrl,
+        thumbnail: '',
+      });
+    });
+
+    if (episodes.length) {
+      seasons.push({
+        seasonNumber,
+        episodes: episodes.sort(
+          (a, b) => a.episodeNumber - b.episodeNumber
+        ),
+      });
+    }
   }
 
-  seasonMap.get(seasonNumber)!.push(episode);
-});
+  const totalEpisodes = seasons.reduce(
+    (sum, s) => sum + s.episodes.length,
+    0
+  );
 
-// build seasons array
-const seasons: Season[] = Array.from(seasonMap.entries())
-  .sort(([a], [b]) => a - b)
-  .map(([seasonNumber, episodes]) => ({
-    seasonNumber,
-    episodes: episodes.sort((a, b) => a.episodeNumber - b.episodeNumber)
-  }));
-
-const totalEpisodes = seasons.reduce(
-  (sum, s) => sum + s.episodes.length,
-  0
-);
-
-
-  // ================= RELATED =================
+  // ===== RELATED =====
   const related: AnimeInfo[] = [];
   $('.related article').each((_, el) => {
     const link = $(el).find('a').first();
@@ -93,7 +125,7 @@ const totalEpisodes = seasons.reduce(
       title: cleanText(link.text()),
       poster: normalizeUrl($(el).find('img').attr('src') || ''),
       url: rUrl,
-      type: rUrl.includes('/series/') ? 'series' : 'movie'
+      type: rUrl.includes('/series/') ? 'series' : 'movie',
     });
   });
 
@@ -108,12 +140,13 @@ const totalEpisodes = seasons.reduce(
     totalEpisodes,
     seasons,
     related,
-    type: 'series'
+    type: 'series',
   };
 
   cache.set(cacheKey, animeDetails, config.cache.ttl.anime);
   return animeDetails;
 }
+
 
 
 /**
