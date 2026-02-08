@@ -7,33 +7,7 @@ import type { AnimeDetails, Season, Episode, AnimeInfo } from '../types';
 /**
  * Scrape anime/series details
  */
-async function fetchSeasonHtml(postId: string, season: number) {
-  const res = await fetch(
-    `${config.baseUrl}/wp-admin/admin-ajax.php`,
-    {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/x-www-form-urlencoded',
-        'user-agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
-        'referer': `${config.baseUrl}/series/spy-x-family/`,
-        'origin': config.baseUrl,
-      },
-      body: new URLSearchParams({
-        action: 'load_episodes',
-        post: postId,
-        season: String(season),
-      }),
-    }
-  );
 
-  const text = await res.text();
-
-  // 🔥 DEBUG (VERY IMPORTANT)
-  console.log('SEASON', season, 'HTML LENGTH', text.length);
-
-  return text;
-}
 
 
 export async function scrapeAnimeDetails(id: string): Promise<AnimeDetails> {
@@ -46,14 +20,6 @@ export async function scrapeAnimeDetails(id: string): Promise<AnimeDetails> {
   const $ = loadHtml(html);
 
   // ===== postId =====
-  const postId =
-    $('body')
-      .attr('class')
-      ?.match(/postid-(\d+)/)?.[1];
-
-  if (!postId) {
-    throw new Error('postId not found');
-  }
 
   // ===== BASIC INFO =====
   const title = cleanText($('h1').first().text());
@@ -75,53 +41,49 @@ export async function scrapeAnimeDetails(id: string): Promise<AnimeDetails> {
   if (text.includes('telugu')) languages.push('Telugu');
   if (text.includes('english')) languages.push('English');
 
-  // ===== SEASON LIST (1,2,3...) =====
-  const seasonNumbers: number[] = [];
-  $('.aa-cnt.sub-menu a[data-season]').each((_, el) => {
-    const s = Number($(el).attr('data-season'));
-    if (!isNaN(s)) seasonNumbers.push(s);
-  });
 
-  // ===== FETCH ALL SEASONS =====
-  const seasons: Season[] = [];
+// ===== SEASONS & EPISODES (URL PATTERN METHOD) =====
+const seasons: Season[] = [];
 
-  for (const seasonNumber of seasonNumbers) {
-    const seasonHtml = await fetchSeasonHtml(postId, seasonNumber);
-    const $$ = loadHtml(seasonHtml);
+const MAX_SEASONS = 5;    // jitna chahiye badha sakta hai
+const MAX_EPISODES = 30; // safe limit
 
-    const episodes: Episode[] = [];
+for (let seasonNumber = 1; seasonNumber <= MAX_SEASONS; seasonNumber++) {
+  const episodes: Episode[] = [];
 
-    $$('#episode_by_temp a.lnk-blk').each((_, a) => {
-      const epUrl = normalizeUrl($$(a).attr('href') || '');
-      if (!epUrl) return;
+  for (let ep = 1; ep <= MAX_EPISODES; ep++) {
+    const epUrl = `${config.baseUrl}/episode/${id}-${seasonNumber}x${ep}/`;
 
-      const m = epUrl.match(/(\d+)x(\d+)/);
-      if (!m) return;
+    // fast existence check
+const res = await fetch(epUrl, {
+  method: 'GET',
+  headers: {
+    'user-agent': 'Mozilla/5.0',
+    'range': 'bytes=0-0', // 🔥 ultra-light request
+  },
+});
 
-      episodes.push({
-        id: extractIdFromUrl(epUrl),
-        title: `Episode ${m[2]}`,
-        episodeNumber: Number(m[2]),
-        seasonNumber,
-        url: epUrl,
-        thumbnail: '',
-      });
+if (res.status === 404) break;
+
+    episodes.push({
+      id: `${id}-${seasonNumber}x${ep}`,
+      title: `Episode ${ep}`,
+      episodeNumber: ep,
+      seasonNumber,
+      url: epUrl,
+      thumbnail: '',
     });
-
-    if (episodes.length) {
-      seasons.push({
-        seasonNumber,
-        episodes: episodes.sort(
-          (a, b) => a.episodeNumber - b.episodeNumber
-        ),
-      });
-    }
   }
 
-  const totalEpisodes = seasons.reduce(
-    (sum, s) => sum + s.episodes.length,
-    0
-  );
+  if (episodes.length > 0) {
+    seasons.push({ seasonNumber, episodes });
+  }
+}
+
+const totalEpisodes = seasons.reduce(
+  (sum, s) => sum + s.episodes.length,
+  0
+);
 
   // ===== RELATED =====
   const related: AnimeInfo[] = [];
