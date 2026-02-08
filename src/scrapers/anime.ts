@@ -88,11 +88,22 @@ export async function scrapeAnimeDetails(id: string): Promise<AnimeDetails> {
 
   let lastSeason = 1;
   let lastEpisode = 0;
+const startSeason =
+  cached && typeof cached._lastSeason === 'number'
+    ? cached._lastSeason
+    : 1;
 
-  for (let s = 1; s <= MAX_SEASONS; s++) {
+ for (let s = startSeason; s <= MAX_SEASONS; s++) {
+
     const episodes: Episode[] = [];
 
-    for (let e = 1; e <= MAX_EPISODES; e++) {
+  const startEpisode =
+  cached && s === cached._lastSeason
+    ? cached._lastEpisode + 1
+    : 1;
+
+for (let e = startEpisode; e <= MAX_EPISODES; e++) {
+
       const epUrl = `${config.baseUrl}/episode/${id}-${s}x${e}/`;
 
       const res = await fetch(epUrl, {
