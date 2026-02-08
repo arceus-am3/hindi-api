@@ -14,6 +14,10 @@ async function fetchSeasonHtml(postId: string, season: number) {
       method: 'POST',
       headers: {
         'content-type': 'application/x-www-form-urlencoded',
+        'user-agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        'referer': `${config.baseUrl}/series/spy-x-family/`,
+        'origin': config.baseUrl,
       },
       body: new URLSearchParams({
         action: 'load_episodes',
@@ -23,8 +27,14 @@ async function fetchSeasonHtml(postId: string, season: number) {
     }
   );
 
-  return await res.text();
+  const text = await res.text();
+
+  // 🔥 DEBUG (VERY IMPORTANT)
+  console.log('SEASON', season, 'HTML LENGTH', text.length);
+
+  return text;
 }
+
 
 export async function scrapeAnimeDetails(id: string): Promise<AnimeDetails> {
   const cacheKey = generateCacheKey('anime', id);
