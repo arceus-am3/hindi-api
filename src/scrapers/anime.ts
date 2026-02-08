@@ -37,17 +37,32 @@ export async function scrapeAnimeDetails(id: string): Promise<AnimeDetails> {
   if (text.includes('english')) languages.push('English');
 
   // ================= SEASONS & EPISODES =================
-const seasonMap = new Map<number, Episode[]>();
+// ================= SEASONS & EPISODES =================
+const seasonMap = new Map<number, Episode>();
 
-$('#episode_by_temp li a').each((_, el) => {
-  const epUrl = normalizeUrl($(el).attr('href') || '');
-  const label = cleanText($(el).text()); // "3x2"
+$('a[href*="/episode/"]').each((_, el) => {
+  const link = $(el);
+  const epUrl = normalizeUrl(link.attr('href') || '');
+  if (!epUrl) return;
 
+  const label = cleanText(link.text()); // "3x2" or "Episode 12"
+
+  // Try 3x2 format
   const match = label.match(/(\d+)\s*x\s*(\d+)/i);
-  if (!match || !epUrl) return;
 
-  const seasonNumber = Number(match[1]);
-  const episodeNumber = Number(match[2]);
+  let seasonNumber = 1;
+  let episodeNumber: number | null = null;
+
+  if (match) {
+    seasonNumber = Number(match[1]);
+    episodeNumber = Number(match[2]);
+  } else {
+    // fallback: extract number from URL or text
+    const n = label.match(/(\d+)/);
+    if (n) episodeNumber = Number(n[1]);
+  }
+
+  if (!episodeNumber) return;
 
   const ep: Episode = {
     id: extractIdFromUrl(epUrl),
@@ -55,7 +70,7 @@ $('#episode_by_temp li a').each((_, el) => {
     episodeNumber,
     seasonNumber,
     url: epUrl,
-    thumbnail: '',
+    thumbnail: ''
   };
 
   if (!seasonMap.has(seasonNumber)) {
@@ -65,19 +80,19 @@ $('#episode_by_temp li a').each((_, el) => {
   seasonMap.get(seasonNumber)!.push(ep);
 });
 
+// build seasons
 const seasons: Season[] = Array.from(seasonMap.entries())
   .sort((a, b) => a[0] - b[0])
   .map(([seasonNumber, episodes]) => ({
     seasonNumber,
-    episodes: episodes.sort(
-      (a, b) => a.episodeNumber - b.episodeNumber
-    ),
+    episodes: episodes.sort((a, b) => a.episodeNumber - b.episodeNumber),
   }));
 
 const totalEpisodes = seasons.reduce(
   (sum, s) => sum + s.episodes.length,
   0
 );
+
 
 
 
