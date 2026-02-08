@@ -1,39 +1,68 @@
 import { fetchHtml } from '../utils/http';
-import { loadHtml, cleanText, normalizeUrl, extractIdFromUrl, parseEpisodeNumber } from '../utils/parser';
+import { loadHtml, cleanText, normalizeUrl, extractIdFromUrl } from '../utils/parser';
 import { cache, generateCacheKey } from '../utils/cache';
 import { config } from '../config';
 import type { AnimeDetails, Season, Episode, AnimeInfo } from '../types';
 
-/**
- * Scrape anime/series details
- */
+/* =========================
+   Fast check: next episode
+   ========================= */
+async function hasNewEpisode(
+  id: string,
+  season: number,
+  episode: number
+): Promise<boolean> {
+  const nextUrl = `${config.baseUrl}/episode/${id}-${season}x${episode + 1}/`;
+  const res = await fetch(nextUrl, {
+    method: 'GET',
+    headers: {
+      'user-agent': 'Mozilla/5.0',
+      'range': 'bytes=0-0', // ultra-light
+    },
+  });
+  return res.status === 200;
+}
 
-
-
+/* =========================
+   MAIN SCRAPER
+   ========================= */
 export async function scrapeAnimeDetails(id: string): Promise<AnimeDetails> {
   const cacheKey = generateCacheKey('anime', id);
-  const cached = cache.get<AnimeDetails>(cacheKey);
-  if (cached) return cached;
 
+  // ---------- SMART CACHE ----------
+  const cached = cache.get<AnimeDetails & {
+    _lastSeason?: number;
+    _lastEpisode?: number;
+  }>(cacheKey);
+
+  if (cached && cached._lastSeason && cached._lastEpisode !== undefined) {
+    // only 1 fast check
+    const updated = await hasNewEpisode(
+      id,
+      cached._lastSeason,
+      cached._lastEpisode
+    );
+    if (!updated) return cached; // ✅ return cache
+    cache.delete?.(cacheKey);     // ❌ invalidate if new ep
+  }
+
+  // ---------- BASIC PAGE ----------
   const url = `${config.baseUrl}/series/${id}/`;
   const html = await fetchHtml(url);
   const $ = loadHtml(html);
 
-  // ===== postId =====
-
-  // ===== BASIC INFO =====
   const title = cleanText($('h1').first().text());
   const poster = normalizeUrl($('article img').first().attr('src') || '');
   const description = cleanText($('.content').first().text());
 
-  // ===== GENRES =====
+  // genres
   const genres: string[] = [];
   $('a[rel="tag"]').each((_, el) => {
     const g = cleanText($(el).text());
     if (g) genres.push(g);
   });
 
-  // ===== LANGUAGES =====
+  // languages
   const languages: string[] = [];
   const text = $.text().toLowerCase();
   if (text.includes('hindi')) languages.push('Hindi');
@@ -41,51 +70,52 @@ export async function scrapeAnimeDetails(id: string): Promise<AnimeDetails> {
   if (text.includes('telugu')) languages.push('Telugu');
   if (text.includes('english')) languages.push('English');
 
+  // ---------- SEASONS (URL PATTERN) ----------
+  const seasons: Season[] = [];
+  const MAX_SEASONS = 10;
+  const MAX_EPISODES = 25;
 
-// ===== SEASONS & EPISODES (URL PATTERN METHOD) =====
-const seasons: Season[] = [];
+  let lastSeason = 1;
+  let lastEpisode = 0;
 
-const MAX_SEASONS = 5;    // jitna chahiye badha sakta hai
-const MAX_EPISODES = 30; // safe limit
+  for (let s = 1; s <= MAX_SEASONS; s++) {
+    const episodes: Episode[] = [];
 
-for (let seasonNumber = 1; seasonNumber <= MAX_SEASONS; seasonNumber++) {
-  const episodes: Episode[] = [];
+    for (let e = 1; e <= MAX_EPISODES; e++) {
+      const epUrl = `${config.baseUrl}/episode/${id}-${s}x${e}/`;
+      const res = await fetch(epUrl, {
+        method: 'GET',
+        headers: {
+          'user-agent': 'Mozilla/5.0',
+          'range': 'bytes=0-0',
+        },
+      });
 
-  for (let ep = 1; ep <= MAX_EPISODES; ep++) {
-    const epUrl = `${config.baseUrl}/episode/${id}-${seasonNumber}x${ep}/`;
+      if (res.status === 404) break;
 
-    // fast existence check
-const res = await fetch(epUrl, {
-  method: 'GET',
-  headers: {
-    'user-agent': 'Mozilla/5.0',
-    'range': 'bytes=0-0', // 🔥 ultra-light request
-  },
-});
+      episodes.push({
+        id: `${id}-${s}x${e}`,
+        title: `Episode ${e}`,
+        episodeNumber: e,
+        seasonNumber: s,
+        url: epUrl,
+        thumbnail: '',
+      });
 
-if (res.status === 404) break;
+      lastSeason = s;
+      lastEpisode = e;
+    }
 
-    episodes.push({
-      id: `${id}-${seasonNumber}x${ep}`,
-      title: `Episode ${ep}`,
-      episodeNumber: ep,
-      seasonNumber,
-      url: epUrl,
-      thumbnail: '',
-    });
+    if (episodes.length) seasons.push({ seasonNumber: s, episodes });
+    else break; // no more seasons
   }
 
-  if (episodes.length > 0) {
-    seasons.push({ seasonNumber, episodes });
-  }
-}
+  const totalEpisodes = seasons.reduce(
+    (sum, s) => sum + s.episodes.length,
+    0
+  );
 
-const totalEpisodes = seasons.reduce(
-  (sum, s) => sum + s.episodes.length,
-  0
-);
-
-  // ===== RELATED =====
+  // ---------- RELATED ----------
   const related: AnimeInfo[] = [];
   $('.related article').each((_, el) => {
     const link = $(el).find('a').first();
@@ -101,7 +131,10 @@ const totalEpisodes = seasons.reduce(
     });
   });
 
-  const animeDetails: AnimeDetails = {
+  const animeDetails: AnimeDetails & {
+    _lastSeason: number;
+    _lastEpisode: number;
+  } = {
     id,
     title,
     poster,
@@ -113,99 +146,13 @@ const totalEpisodes = seasons.reduce(
     seasons,
     related,
     type: 'series',
+
+    // internal (backend only)
+    _lastSeason: lastSeason,
+    _lastEpisode: lastEpisode,
   };
 
-  cache.set(cacheKey, animeDetails, config.cache.ttl.anime);
+  // ---------- CACHE ----------
+  cache.set(cacheKey, animeDetails, 60 * 60 * 24 * 7); // 7 days
   return animeDetails;
-}
-
-
-
-/**
- * Scrape movie details (similar to anime but for movies)
- */
-export async function scrapeMovieDetails(id: string): Promise<AnimeDetails> {
-    const cacheKey = generateCacheKey('movie', id);
-
-    // Check cache
-    const cached = cache.get<AnimeDetails>(cacheKey);
-    if (cached) {
-        return cached;
-    }
-
-    const url = `${config.baseUrl}/movies/${id}/`;
-    const html = await fetchHtml(url);
-    const $ = loadHtml(html);
-
-    // Extract basic info (similar to series)
-    const title = cleanText($('h1.title, .single-post h1, article h1').first().text());
-    const poster = normalizeUrl($('.poster img, .thumbnail img, article img').first().attr('src') || '');
-    const description = cleanText($('.description, .summary, .content p').first().text() || $('.content').first().text());
-
-    // Extract genres
-    const genres: string[] = [];
-    $('.genres a, .genre a, .sgeneros a, a[rel="tag"]').each((_, el) => {
-        const genre = cleanText($(el).text());
-        if (genre && !genres.includes(genre)) {
-            genres.push(genre);
-        }
-    });
-
-    // Extract languages
-    const languages: string[] = [];
-    $('.languages a, .language a, .audio a').each((_, el) => {
-        const lang = cleanText($(el).text());
-        if (lang && !languages.includes(lang)) {
-            languages.push(lang);
-        }
-    });
-
-    if (languages.length === 0) {
-        const contentText = $.text().toLowerCase();
-        if (contentText.includes('hindi')) languages.push('Hindi');
-        if (contentText.includes('tamil')) languages.push('Tamil');
-        if (contentText.includes('telugu')) languages.push('Telugu');
-        if (contentText.includes('english')) languages.push('English');
-    }
-
-    const rating = cleanText($('.rating, .vote_average, .dt_rating_vgs').first().text());
-
-    // Extract related movies
-    const related: AnimeInfo[] = [];
-    $('.related article, .recommendations article, [class*="related"] article').each((_, el) => {
-        const $el = $(el);
-        const link = $el.find('a').first();
-        const relatedTitle = cleanText(link.attr('title') || link.text() || '');
-        const relatedUrl = normalizeUrl(link.attr('href') || '');
-        const relatedPoster = normalizeUrl($el.find('img').first().attr('src') || '');
-
-        if (relatedTitle && relatedUrl) {
-            const relatedId = extractIdFromUrl(relatedUrl);
-            related.push({
-                id: relatedId,
-                title: relatedTitle,
-                poster: relatedPoster,
-                url: relatedUrl,
-                type: relatedUrl.includes('/series/') ? 'series' : 'movie',
-            });
-        }
-    });
-
-    const movieDetails: AnimeDetails = {
-        id,
-        title,
-        poster,
-        url,
-        description,
-        genres,
-        languages,
-        rating: rating || undefined,
-        related: related.length > 0 ? related : undefined,
-        type: 'movie',
-    };
-
-    // Cache the result
-    cache.set(cacheKey, movieDetails, config.cache.ttl.anime);
-
-    return movieDetails;
 }
