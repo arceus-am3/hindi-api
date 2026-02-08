@@ -5,7 +5,7 @@ import { config } from '../config';
 import type { AnimeDetails, Season, Episode, AnimeInfo } from '../types';
 
 /* =========================
-   Fast check: next episode
+   FAST CHECK – next episode
    ========================= */
 async function hasNewEpisode(
   id: string,
@@ -13,13 +13,15 @@ async function hasNewEpisode(
   episode: number
 ): Promise<boolean> {
   const nextUrl = `${config.baseUrl}/episode/${id}-${season}x${episode + 1}/`;
+
   const res = await fetch(nextUrl, {
     method: 'GET',
     headers: {
       'user-agent': 'Mozilla/5.0',
-      'range': 'bytes=0-0', // ultra-light
+      'range': 'bytes=0-0',
     },
   });
+
   return res.status === 200;
 }
 
@@ -29,24 +31,33 @@ async function hasNewEpisode(
 export async function scrapeAnimeDetails(id: string): Promise<AnimeDetails> {
   const cacheKey = generateCacheKey('anime', id);
 
-  // ---------- SMART CACHE ----------
-  const cached = cache.get<AnimeDetails & {
-    _lastSeason?: number;
-    _lastEpisode?: number;
-  }>(cacheKey);
+  /* ---------- SMART CACHE ---------- */
+  const cached = cache.get<
+    AnimeDetails & { _lastSeason?: number; _lastEpisode?: number }
+  >(cacheKey);
 
-  if (cached && cached._lastSeason && cached._lastEpisode !== undefined) {
-    // only 1 fast check
+  if (
+    cached &&
+    typeof cached._lastSeason === 'number' &&
+    typeof cached._lastEpisode === 'number'
+  ) {
     const updated = await hasNewEpisode(
       id,
       cached._lastSeason,
       cached._lastEpisode
     );
-    if (!updated) return cached; // ✅ return cache
-    cache.delete?.(cacheKey);     // ❌ invalidate if new ep
+
+    if (!updated) {
+      const { _lastSeason, _lastEpisode, ...publicData } = cached;
+      return publicData;
+    }
+
+    if (typeof cache.delete === 'function') {
+      cache.delete(cacheKey);
+    }
   }
 
-  // ---------- BASIC PAGE ----------
+  /* ---------- BASIC PAGE ---------- */
   const url = `${config.baseUrl}/series/${id}/`;
   const html = await fetchHtml(url);
   const $ = loadHtml(html);
@@ -55,22 +66,22 @@ export async function scrapeAnimeDetails(id: string): Promise<AnimeDetails> {
   const poster = normalizeUrl($('article img').first().attr('src') || '');
   const description = cleanText($('.content').first().text());
 
-  // genres
+  /* ---------- GENRES ---------- */
   const genres: string[] = [];
   $('a[rel="tag"]').each((_, el) => {
     const g = cleanText($(el).text());
     if (g) genres.push(g);
   });
 
-  // languages
+  /* ---------- LANGUAGES ---------- */
   const languages: string[] = [];
-  const text = $.text().toLowerCase();
-  if (text.includes('hindi')) languages.push('Hindi');
-  if (text.includes('tamil')) languages.push('Tamil');
-  if (text.includes('telugu')) languages.push('Telugu');
-  if (text.includes('english')) languages.push('English');
+  const pageText = $.text().toLowerCase();
+  if (pageText.includes('hindi')) languages.push('Hindi');
+  if (pageText.includes('tamil')) languages.push('Tamil');
+  if (pageText.includes('telugu')) languages.push('Telugu');
+  if (pageText.includes('english')) languages.push('English');
 
-  // ---------- SEASONS (URL PATTERN) ----------
+  /* ---------- SEASONS & EPISODES (URL PATTERN – SAME AS BEFORE) ---------- */
   const seasons: Season[] = [];
   const MAX_SEASONS = 10;
   const MAX_EPISODES = 25;
@@ -83,6 +94,7 @@ export async function scrapeAnimeDetails(id: string): Promise<AnimeDetails> {
 
     for (let e = 1; e <= MAX_EPISODES; e++) {
       const epUrl = `${config.baseUrl}/episode/${id}-${s}x${e}/`;
+
       const res = await fetch(epUrl, {
         method: 'GET',
         headers: {
@@ -106,8 +118,11 @@ export async function scrapeAnimeDetails(id: string): Promise<AnimeDetails> {
       lastEpisode = e;
     }
 
-    if (episodes.length) seasons.push({ seasonNumber: s, episodes });
-    else break; // no more seasons
+    if (episodes.length > 0) {
+      seasons.push({ seasonNumber: s, episodes });
+    } else {
+      break;
+    }
   }
 
   const totalEpisodes = seasons.reduce(
@@ -115,7 +130,7 @@ export async function scrapeAnimeDetails(id: string): Promise<AnimeDetails> {
     0
   );
 
-  // ---------- RELATED ----------
+  /* ---------- RELATED ---------- */
   const related: AnimeInfo[] = [];
   $('.related article').each((_, el) => {
     const link = $(el).find('a').first();
@@ -131,7 +146,8 @@ export async function scrapeAnimeDetails(id: string): Promise<AnimeDetails> {
     });
   });
 
-  const animeDetails: AnimeDetails & {
+  /* ---------- FINAL OBJECT ---------- */
+  const cachedData: AnimeDetails & {
     _lastSeason: number;
     _lastEpisode: number;
   } = {
@@ -147,12 +163,14 @@ export async function scrapeAnimeDetails(id: string): Promise<AnimeDetails> {
     related,
     type: 'series',
 
-    // internal (backend only)
+    // internal (cache only)
     _lastSeason: lastSeason,
     _lastEpisode: lastEpisode,
   };
 
-  // ---------- CACHE ----------
-  cache.set(cacheKey, animeDetails, 60 * 60 * 24 * 7); // 7 days
-  return animeDetails;
+  const ttl = config.cache?.ttl?.anime ?? 60 * 60 * 6;
+  cache.set(cacheKey, cachedData, ttl);
+
+  const { _lastSeason, _lastEpisode, ...publicData } = cachedData;
+  return publicData;
 }
