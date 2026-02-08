@@ -37,15 +37,13 @@ export async function scrapeAnimeDetails(id: string): Promise<AnimeDetails> {
   if (text.includes('english')) languages.push('English');
 
   // ================= SEASONS & EPISODES =================
-// ================= SEASONS & EPISODES =================
 const seasonMap = new Map<number, Episode[]>();
 
-$('#episode_by_temp li').each((_, el) => {
-  const link = $(el).find('a').first();
-  const epUrl = normalizeUrl(link.attr('href') || '');
-  const label = cleanText(link.text()); // e.g. "3x2"
+$('#episode_by_temp li a').each((_, el) => {
+  const epUrl = normalizeUrl($(el).attr('href') || '');
+  const label = cleanText($(el).text()); // "3x2"
 
-  const match = label.match(/(\d+)x(\d+)/i);
+  const match = label.match(/(\d+)\s*x\s*(\d+)/i);
   if (!match || !epUrl) return;
 
   const seasonNumber = Number(match[1]);
@@ -57,7 +55,7 @@ $('#episode_by_temp li').each((_, el) => {
     episodeNumber,
     seasonNumber,
     url: epUrl,
-    thumbnail: ''
+    thumbnail: '',
   };
 
   if (!seasonMap.has(seasonNumber)) {
@@ -67,16 +65,20 @@ $('#episode_by_temp li').each((_, el) => {
   seasonMap.get(seasonNumber)!.push(ep);
 });
 
-// build seasons array
 const seasons: Season[] = Array.from(seasonMap.entries())
   .sort((a, b) => a[0] - b[0])
   .map(([seasonNumber, episodes]) => ({
     seasonNumber,
-    episodes: episodes.sort((a, b) => a.episodeNumber - b.episodeNumber)
+    episodes: episodes.sort(
+      (a, b) => a.episodeNumber - b.episodeNumber
+    ),
   }));
 
-const totalEpisodes = Array.from(seasonMap.values())
-  .reduce((sum, eps) => sum + eps.length, 0);
+const totalEpisodes = seasons.reduce(
+  (sum, s) => sum + s.episodes.length,
+  0
+);
+
 
 
   // ================= RELATED =================
