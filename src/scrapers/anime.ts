@@ -36,59 +36,34 @@ export async function scrapeAnimeDetails(id: string): Promise<AnimeDetails> {
   if (text.includes('telugu')) languages.push('Telugu');
   if (text.includes('english')) languages.push('English');
 
-// ================= SEASONS & EPISODES =================
-const seasonMap = new Map<number, Episode[]>();
+  // ================= SEASONS & EPISODES =================
+  const episodes: Episode[] = [];
 
-$('a[href*="/episode/"]')
-  .filter((_, el) => {
-    const t = cleanText($(el).text());
-    return /\d+\s*x\s*\d+/i.test(t);
-  })
-  .each((_, el) => {
-    const link = $(el);
+  $('#episode_by_temp li').each((_, el) => {
+    const link = $(el).find('a').first();
     const epUrl = normalizeUrl(link.attr('href') || '');
-    if (!epUrl) return;
+    const label = cleanText(link.text()); // "1x12"
 
-    const label = cleanText(link.text()); // "3x2"
-    const match = label.match(/(\d+)\s*x\s*(\d+)/i);
-    if (!match) return;
+    const match = label.match(/(\d+)x(\d+)/i);
+    const episodeNumber = match ? Number(match[2]) : episodes.length + 1;
 
-    const seasonNumber = Number(match[1]);
-    const episodeNumber = Number(match[2]);
-
-    const ep: Episode = {
-      id: extractIdFromUrl(epUrl),
-      title: `Episode ${episodeNumber}`,
-      episodeNumber,
-      seasonNumber,
-      url: epUrl,
-      thumbnail: '',
-    };
-
-    if (!seasonMap.has(seasonNumber)) {
-      seasonMap.set(seasonNumber, []);
+    if (epUrl) {
+      episodes.push({
+        id: extractIdFromUrl(epUrl),
+        title: `Episode ${episodeNumber}`,
+        episodeNumber,
+        seasonNumber: 1,
+        url: epUrl,
+        thumbnail: ''
+      });
     }
-
-    seasonMap.get(seasonNumber)!.push(ep);
   });
 
-// build seasons
-const seasons: Season[] = Array.from(seasonMap.entries())
-  .sort((a, b) => a[0] - b[0])
-  .map(([seasonNumber, episodes]) => ({
-    seasonNumber,
-    episodes: episodes.sort(
-      (a, b) => a.episodeNumber - b.episodeNumber
-    ),
-  }));
+  const seasons: Season[] = episodes.length
+    ? [{ seasonNumber: 1, episodes }]
+    : [];
 
-const totalEpisodes = seasons.reduce(
-  (sum, s) => sum + s.episodes.length,
-  0
-);
-
-
-
+  const totalEpisodes = episodes.length;
 
   // ================= RELATED =================
   const related: AnimeInfo[] = [];
@@ -123,6 +98,7 @@ const totalEpisodes = seasons.reduce(
   cache.set(cacheKey, animeDetails, config.cache.ttl.anime);
   return animeDetails;
 }
+
 
 /**
  * Scrape movie details (similar to anime but for movies)
